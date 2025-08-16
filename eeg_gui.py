@@ -1,49 +1,56 @@
 import streamlit as st
 import pandas as pd
 import os
+import sys
 
-st.title("EEG Data Loader and Analyzer")
+st.set_page_config(layout="wide", page_title="EEG Loader (safe)")
 
-# Upload CSV files
+st.title("EEG Data Loader — Safe Mode")
+
+# Check for optional libraries (deferred)
+_missing = []
+
+def try_import(name, alias=None):
+    try:
+        module = __import__(name)
+        if alias:
+            globals()[alias] = module
+        else:
+            globals()[name] = module
+        return True
+    except Exception as e:
+        _missing.append(name)
+        return False
+
+# Defer heavy imports until after UI loads
+# We'll attempt to import when needed.
+
 uploaded_files = st.file_uploader("Upload your CSV file(s)", accept_multiple_files=True, type=["csv"])
+sample_rate = st.number_input("Sample rate (Hz)", value=512, min_value=1)
 
-# Sample rate (adjust as necessary)
-sample_rate = st.number_input("Sample rate (Hz)", value=512)
+# Show which optional packages are available (attempt one quick check)
+st.sidebar.header("Optional packages status")
+# Quick check: see if basic optional libs are importable without raising the app
+for pkg in ["plotly", "scipy", "matplotlib"]:
+    try:
+        __import__(pkg)
+        st.sidebar.write(f"{pkg} — OK")
+    except Exception:
+        st.sidebar.write(f"{pkg} — missing")
 
 if uploaded_files:
-    # For simplicity, process only the first file
     file = uploaded_files[0]
-    df = pd.read_csv(file)
+    try:
+        df = pd.read_csv(file)
+    except Exception as e:
+        st.error(f"Failed to read {file.name}: {e}")
+        st.stop()
 
     st.write(f"Loaded: {file.name}")
-    st.write("Preview:")
-    st.write(df.head())
+    st.dataframe(df.head())
 
-    # Detect if 'time' or 'Time' column exists
-    if 'Time' in df.columns or 'time' in df.columns:
-        st.write("Using existing 'Time' column.")
-        if 'Time' in df.columns:
-            time_col = 'Time'
-        else:
-            time_col = 'time'
-    else:
-        st.write("No 'Time' column found. Creating based on sample rate.")
-        df['Time'] = df.index / sample_rate
-        time_col = 'Time'
-
-    # Show available channels
-    channels = [col for col in df.columns if col != time_col]
-    st.write("Available channels:")
-    st.write(channels)
-
-    # Select a channel to plot
-    selected_channel = st.selectbox("Select channel to plot", channels)
-
-    if st.button("Plot Signal"):
-        import matplotlib.pyplot as plt
-        fig, ax = plt.subplots()
-        ax.plot(df[time_col], df[selected_channel])
-        ax.set_xlabel("Time (s)")
-        ax.set_ylabel("Amplitude")
-        ax.set_title(f"Channel: {selected_channel}")
-        st.pyplot(fig)
+    # Determine time column
+    if 'time' in df.columns:
+        time_col = 'time'
+    elif 'Time' in df.columns:
+        time_col = 'Time
